@@ -174,6 +174,10 @@ function backup_s3() {
   done
 }
 
+function backup_duckdb() {
+
+}
+
 # ClickHouse client
 if ! command -v clickhouse-client >/dev/null 2>&1; then
   echo -e "${ST_RED_BOLD}[ERROR]${ST_RESET} clickhouse-client was not found. Contact your system administrator to install the required client."
@@ -259,6 +263,12 @@ select action in "Copy database to backup database" "Back up to S3 storage" "Exi
     ACTION="backup_s3"
     break
     ;;
+  "Back up to DuckDB storage")
+    echo ""
+    echo -e "${ST_GREEN}[OK]${ST_RESET} Selected: ${ST_UNDERLINE} Back up to DuckDB storage ${ST_RESET}"
+    ACTION="backup_duckdb"
+    break
+    ;;
   "Exit")
     echo ""
     echo -e "${ST_RED_BOLD}[EXIT]${ST_RESET} Exited"
@@ -279,6 +289,9 @@ copy_backup_db)
   ;;
 backup_s3)
   backup_s3 "${SELECT_DB}"
+  ;;
+backup_duckdb)
+  backup_duckdb "${SELECT_DB}"
   ;;
 *)
   exit 1
