@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Example: run in background with prefilled menu choices
+# nohup bash -c "printf '%s\n' '12' '3' | bash ./a.sh" > a.log 2>&1 < /dev/null &
+# Notes:
+# - 12 = database menu index
+# - 3  = operation menu index
+# - If ~/.clickhouse-client/config.xml does not exist, the script still prompts for connection info
+
 # Text styles
 ST_RED_BOLD="\033[1;31m"    # Red + bold
 ST_GREEN="\033[0;32m"       # Green
