@@ -174,14 +174,62 @@ function backup_s3() {
   done
 }
 
+# Core function: Backup DuckDB
 function backup_duckdb() {
+  DATABASE_NAME="$1"
+  echo -e "${ST_GREEN}[INFO]${ST_RESET} Backup Database $DATABASE_NAME ==> DuckDB file: ${DATABASE_NAME}_backup.duckdb"
 
+  # Table list
+  mapfile -t TABLES < <(
+    clickhouse-client "${CK_CLIENT_OPTS[@]}" --query "
+      SELECT name
+      FROM system.tables
+      WHERE database = '${DATABASE_NAME}'
+        AND engine = 'ReplacingMergeTree'
+      ORDER BY name
+      FORMAT TSV
+    "
+  )
+
+  for table in "${TABLES[@]}"; do
+    echo -e "${ST_GREEN}[INFO]${ST_RESET} Exporting ${DATABASE_NAME}.${table}"
+
+    parquet_file="$(mktemp "/tmp/clickhouse_${table//[^a-zA-Z0-9_.-]/_}_XXXXXX.parquet")"
+
+    clickhouse_table="${DATABASE_NAME}.${table}"
+
+    clickhouse-client "${CK_CLIENT_OPTS[@]}" \
+      --query "SELECT * FROM ${clickhouse_table} FORMAT Parquet" |
+      pv -f \
+      >"$parquet_file"
+
+    duckdb -dark-mode -batch "${DATABASE_NAME}_backup.duckdb" <<SQL
+BEGIN;
+DROP TABLE IF EXISTS ${table};
+CREATE TABLE ${table} AS
+SELECT *
+FROM read_parquet("${parquet_file}");
+COMMIT;
+SQL
+
+    rm -f -- "$parquet_file"
+
+    echo -e "${ST_GREEN}[INFO]${ST_RESET} Imported ${table} into ${DATABASE_NAME}_backup.duckdb"
+  done
 }
 
 # ClickHouse client
 if ! command -v clickhouse-client >/dev/null 2>&1; then
   echo -e "${ST_RED_BOLD}[ERROR]${ST_RESET} clickhouse-client was not found. Contact your system administrator to install the required client."
   echo -e "${ST_GREEN}[HELP] ${ST_RESET} Install the ClickHouse client first: https://clickhouse.com/docs/en/interfaces/cli"
+  echo ""
+  exit 1
+fi
+
+# Duck client
+if ! command -v duckdb >/dev/null 2>&1; then
+  echo -e "${ST_RED_BOLD}[ERROR]${ST_RESET} duckdb was not found. Please install the DuckDB CLI first."
+  echo -e "${ST_GREEN}[HELP] ${ST_RESET} DuckDB CLI installation: https://duckdb.org/install/"
   echo ""
   exit 1
 fi
@@ -212,8 +260,8 @@ echo ""
 
 # Database list
 mapfile -t DATABASES < <(
-clickhouse-client "${CK_CLIENT_OPTS[@]}" \
-  --query "
+  clickhouse-client "${CK_CLIENT_OPTS[@]}" \
+    --query "
     SELECT name
     FROM system.databases
     WHERE name NOT LIKE 'backup%'
@@ -249,7 +297,7 @@ done
 # Operation to perform
 echo ""
 echo -e "${ST_CYAN}[QUES] Select an operation:${ST_RESET}"
-select action in "Copy database to backup database" "Back up to S3 storage" "Exit"; do
+select action in "Copy database to backup database" "Back up to S3 storage" "Back up to DuckDB storage" "Exit"; do
   case "$action" in
   "Copy database to backup database")
     echo ""
